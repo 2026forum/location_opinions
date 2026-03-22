@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'alias_engine.dart';
 import 'slur_filter.dart';
@@ -57,5 +58,58 @@ class AuthService {
 
   Future<void> deleteCurrentUser() async {
     await _auth.currentUser!.delete();
+  }
+
+  static const _emailForSignInKey = 'email_for_sign_in';
+
+  /// Sends a passwordless sign-in link to the given email.
+  /// Store email in SharedPreferences (required for signInWithEmailLink when user returns).
+  Future<String?> sendSignInLinkToEmail(String email) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_emailForSignInKey, email);
+
+      // TODO: Configure ActionCodeSettings - add URL to Firebase Console authorized domains
+      final actionCodeSettings = ActionCodeSettings(
+        url: 'https://yourapp.com/__/auth/action', // TODO: replace with your URL
+        handleCodeInApp: true,
+        // iOSBundleId: 'com.example.yourapp',
+        // androidPackageName: 'com.example.yourapp',
+        // androidInstallApp: true,
+        // androidMinimumVersion: '12',
+      );
+
+      await _auth.sendSignInLinkToEmail(
+        email: email.trim(),
+        actionCodeSettings: actionCodeSettings,
+      );
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? e.code;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  /// Call when app opens from the email link to complete sign-in.
+  /// Pass the full link URL (e.g. from app_links or getInitialLink).
+  Future<String?> signInWithEmailLink(String link) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final email = prefs.getString(_emailForSignInKey);
+      if (email == null || email.isEmpty) {
+        return 'Email not found. Please request a new link.';
+      }
+      if (!_auth.isSignInWithEmailLink(link)) {
+        return 'Invalid sign-in link.';
+      }
+      await _auth.signInWithEmailLink(email: email, emailLink: link);
+      await prefs.remove(_emailForSignInKey);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? e.code;
+    } catch (e) {
+      return e.toString();
+    }
   }
 }
